@@ -29,17 +29,40 @@ uint32_t bcm2835_peri_base = 0x20000000;
 #define BCM2835_GPIO_MODE_INPUT 0
 #define BCM2835_GPIO_MODE_OUTPUT 1
 
-/* GPIO setup macros */
-#define MODE_GPIO(g) (*(pio_base+((g)/10))>>(((g)%10)*3) & 7)
-#define INP_GPIO(g) do { *(pio_base+((g)/10)) &= ~(7<<(((g)%10)*3)); } while (0)
-#define SET_MODE_GPIO(g, m) do { /* clear the mode bits first, then set as necessary */ \
-		INP_GPIO(g);						\
-		*(pio_base+((g)/10)) |=  ((m)<<(((g)%10)*3)); } while (0)
-#define OUT_GPIO(g) SET_MODE_GPIO(g, BCM2835_GPIO_MODE_OUTPUT)
+#define BCM2835_GPIO_REG_READ(offset) \
+    (*(pio_base + (offset)))
 
-#define GPIO_SET(g, v) do { *(pio_base+(7+((g)/32))) = ((v)<<((g)%32)); } while (0)  /* sets   bits which are 1, ignores bits which are 0 */
-#define GPIO_CLR(g, v) do { *(pio_base+(10+((g)/32))) = ((v)<<((g)%32)); } while (0) /* clears bits which are 1, ignores bits which are 0 */
-#define GPIO_LEV(g) (*(pio_base+(13+((g)/32)))>>((g)%32) & 1) /* current level of the pin */
+#define BCM2835_GPIO_REG_WRITE(offset, value) \
+    (*(pio_base + (offset)) = (value))
+
+#define BCM2835_GPIO_SET_REG_BITS(offset, bit_mask) \
+    (*(pio_base + (offset)) |= (bit_mask))
+
+#define BCM2835_GPIO_CLEAR_REG_BITS(offset, bit_mask) \
+    (*(pio_base + (offset)) &= ~(bit_mask))
+
+/* GPIO setup macros */
+#define MODE_GPIO(gpio_pin_num) /* read the function select bits of specified GPIO pin number */ \
+    BCM2835_GPIO_REG_READ(((gpio_pin_num) / 10)) >> (((gpio_pin_num) % 10) * 3) & 7
+
+#define INP_GPIO(gpio_pin_num) /* set GPIO pin number as input */ \
+    BCM2835_GPIO_CLEAR_REG_BITS(((gpio_pin_num / 10)), (7 << (((gpio_pin_num) % 10) * 3)))
+
+#define SET_MODE_GPIO(gpio_pin_num, bcm2835_gpio_mode) do { /* clear the mode bits first, then set as necessary */ \
+    INP_GPIO(gpio_pin_num);						\
+    BCM2835_GPIO_SET_REG_BITS(((gpio_pin_num) / 10), ((bcm2835_gpio_mode) << (((gpio_pin_num) % 10) * 3))); } while(0)
+
+#define OUT_GPIO(gpio_pin_num) /* set GPIO pin number as output */ \
+    SET_MODE_GPIO(gpio_pin_num, BCM2835_GPIO_MODE_OUTPUT)
+
+#define GPIO_SET(gpio_pin_num, value) /* GPSET[7,8] register sets bits which are 1, ignores bits which are 0 */ \
+    BCM2835_GPIO_REG_WRITE((7 + ((gpio_pin_num) / 32)), ((value) << ((gpio_pin_num) % 32)))
+
+#define GPIO_CLR(gpio_pin_num, value) /* GPCLR[10,11] register clears bits which are 1, ignores bits which are 0 */ \
+    BCM2835_GPIO_REG_WRITE((10 + ((gpio_pin_num) / 32)), ((value) << ((gpio_pin_num) % 32)))
+
+#define GPIO_PIN_LEVEL(gpio_pin_num) /* current level of the pin */ \
+    (BCM2835_GPIO_REG_READ((13 + ((gpio_pin_num) / 32))) >> ((gpio_pin_num) % 32) & 1)
 
 static int dev_mem_fd;
 static volatile uint32_t *pio_base = MAP_FAILED;
@@ -134,7 +157,7 @@ static void initialize_gpio(enum adapter_gpio_config_index idx)
 		return;
 
 	initial_gpio_state[idx].mode = MODE_GPIO(adapter_gpio_config[idx].gpio_num);
-	initial_gpio_state[idx].output_level = GPIO_LEV(adapter_gpio_config[idx].gpio_num);
+	initial_gpio_state[idx].output_level = GPIO_PIN_LEVEL(adapter_gpio_config[idx].gpio_num);
 	LOG_DEBUG("saved GPIO mode for %s (GPIO %d %d): %d",
 			adapter_gpio_get_name(idx), adapter_gpio_config[idx].chip_num, adapter_gpio_config[idx].gpio_num,
 			initial_gpio_state[idx].mode);
@@ -164,7 +187,7 @@ static void initialize_gpio(enum adapter_gpio_config_index idx)
 
 static bb_value_t bcm2835gpio_read(void)
 {
-	uint32_t value = GPIO_LEV(adapter_gpio_config[ADAPTER_GPIO_IDX_TDO].gpio_num);
+	uint32_t value = GPIO_PIN_LEVEL(adapter_gpio_config[ADAPTER_GPIO_IDX_TDO].gpio_num);
 	return value ^ (adapter_gpio_config[ADAPTER_GPIO_IDX_TDO].active_low ? BB_HIGH : BB_LOW);
 
 }
@@ -251,7 +274,7 @@ static void bcm2835_swdio_drive(bool is_output)
 
 static int bcm2835_swdio_read(void)
 {
-	uint32_t value = GPIO_LEV(adapter_gpio_config[ADAPTER_GPIO_IDX_SWDIO].gpio_num);
+	uint32_t value = GPIO_PIN_LEVEL(adapter_gpio_config[ADAPTER_GPIO_IDX_SWDIO].gpio_num);
 	return value ^ (adapter_gpio_config[ADAPTER_GPIO_IDX_SWDIO].active_low ? 1 : 0);
 }
 

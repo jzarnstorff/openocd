@@ -22,8 +22,27 @@
 uint32_t bcm2835_peri_base = 0x20000000;
 #define BCM2835_GPIO_BASE	(bcm2835_peri_base + 0x200000) /* GPIO controller */
 
-#define BCM2835_PADS_GPIO_0_27		(bcm2835_peri_base + 0x100000)
-#define BCM2835_PADS_GPIO_0_27_OFFSET	(0x2c / 4)
+#define BCM2835_PADS_GPIO_BASE          (bcm2835_peri_base + 0x100000)
+#define BCM2835_PADS_GPIO_0_27_OFFSET   (0x2c / 4)
+#define BCM2835_PADS_GPIO_28_45_OFFSET  (0x30 / 4)
+#define BCM2835_PADS_GPIO_46_53_OFFSET  (0x34 / 4)
+
+#define BCM2835_PADS_GPIO_PASSWORD          (0x5a << 24)
+#define BCM2835_PADS_GPIO_SLEW_LIMITED      (0 << 4)
+#define BCM2835_PADS_GPIO_SLEW_NOT_LIMITED  (1 << 4)
+#define BCM2835_PADS_GPIO_HYST_DISABLED     (0 << 3)
+#define BCM2835_PADS_GPIO_HYST_ENABLED      (1 << 3)
+
+enum bcm2835_pads_gpio_drv {
+	DRIVE_STRENGTH_2MA,
+	DRIVE_STRENGTH_4MA,
+	DRIVE_STRENGTH_6MA,
+	DRIVE_STRENGTH_8MA,
+	DRIVE_STRENGTH_10MA,
+	DRIVE_STRENGTH_12MA,
+	DRIVE_STRENGTH_14MA,
+	DRIVE_STRENGTH_16MA,
+};
 
 /* See "GPIO Function Select Registers (GPFSELn)" in "Broadcom BCM2835 ARM Peripherals" datasheet. */
 #define BCM2835_GPIO_MODE_INPUT 0
@@ -78,7 +97,7 @@ static struct initial_gpio_state {
 	unsigned int mode;
 	unsigned int output_level;
 } initial_gpio_state[ADAPTER_GPIO_IDX_NUM];
-static uint32_t initial_drive_strength_etc;
+static uint32_t initial_drive_strengths[3];
 
 static inline void bcm2835_gpio_synchronize(void)
 {
@@ -446,7 +465,7 @@ static int bcm2835gpio_init(void)
 	}
 
 	pads_base = mmap(NULL, sysconf(_SC_PAGE_SIZE), PROT_READ | PROT_WRITE,
-				MAP_SHARED, dev_mem_fd, BCM2835_PADS_GPIO_0_27);
+				MAP_SHARED, dev_mem_fd, BCM2835_PADS_GPIO_BASE);
 
 	if (pads_base == MAP_FAILED) {
 		LOG_ERROR("mmap: %s", strerror(errno));
@@ -457,9 +476,10 @@ static int bcm2835gpio_init(void)
 
 	close(dev_mem_fd);
 
-	/* set 4mA drive strength, slew rate limited, hysteresis on */
-	initial_drive_strength_etc = pads_base[BCM2835_PADS_GPIO_0_27_OFFSET] & 0x1f;
-	pads_base[BCM2835_PADS_GPIO_0_27_OFFSET] = 0x5a000008 + 1;
+    for (unsigned int i = 0; i < sizeof(initial_drive_strengths) / sizeof(initial_drive_strengths[0]); i++) {
+		initial_drive_strengths[i] = pads_base[BCM2835_PADS_GPIO_0_27_OFFSET + i] & 0x1f;
+		pads_base[BCM2835_PADS_GPIO_0_27_OFFSET + i] = BCM2835_PADS_GPIO_PASSWORD | BCM2835_PADS_GPIO_SLEW_LIMITED | BCM2835_PADS_GPIO_HYST_ENABLED | DRIVE_STRENGTH_4MA;
+	}
 
 	/* Configure JTAG/SWD signals. Default directions and initial states are handled
 	 * by adapter.c and "adapter gpio" command.
@@ -530,8 +550,8 @@ static int bcm2835gpio_quit(void)
 	restore_gpio(ADAPTER_GPIO_IDX_SRST);
 	restore_gpio(ADAPTER_GPIO_IDX_LED);
 
-	/* Restore drive strength. MSB is password ("5A") */
-	pads_base[BCM2835_PADS_GPIO_0_27_OFFSET] = 0x5A000000 | initial_drive_strength_etc;
+    for (unsigned int i = 0; i < sizeof(initial_drive_strengths) / sizeof(initial_drive_strengths[0]); i++)
+		pads_base[BCM2835_PADS_GPIO_0_27_OFFSET + i] = BCM2835_PADS_GPIO_PASSWORD | initial_drive_strengths[i];
 	bcm2835gpio_munmap();
 
 	return ERROR_OK;

@@ -8780,7 +8780,6 @@ power consumption (because the CPU is needlessly clocked).
 @deffn {Command} {resume} [address]
 Resume the target at its current code position,
 or the optional @var{address} if it is provided.
-OpenOCD will wait 5 seconds for the target to resume.
 @end deffn
 
 @deffn {Command} {step} [address]
@@ -9101,8 +9100,10 @@ format. Optional @option{start} and @option{end} parameters allow to
 limit the address range.
 @end deffn
 
-@deffn {Command} {version}
-Displays a string identifying the version of this OpenOCD server.
+@deffn {Command} {version} [git]
+Returns a string identifying the version of this OpenOCD server.
+With option @option{git}, it returns the git version obtained at compile time
+through ``git describe''.
 @end deffn
 
 @deffn {Command} {virt2phys} virtual_address
@@ -11136,6 +11137,46 @@ Stop current trace as started by the tracestart command.
 Dump trace memory to a file.
 @end deffn
 
+@section Espressif Specific Commands
+
+@deffn {Command} {esp apptrace} (start <destination> [<poll_period> [<trace_size> [<stop_tmo> [<wait4halt> [<skip_size>]]]]])
+Starts
+@uref{https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/app_trace.html#application-level-tracing-library, application level tracing}.
+Data will be stored to specified destination. Available destinations are:
+@itemize @bullet
+@item @code{file://<outfile>} - Save trace logs into file.
+@item @code{tcp://<host>:<port>} - Send trace logs to tcp port on specified host. OpenOCD will act as a tcp client.
+@item @code{con:} - Print trace logs to the stdout.
+@end itemize
+Other parameters will be same for each destination.
+@itemize @bullet
+@item @code{poll_period} - trace data polling period in ms.
+@item @code{trace_size} - maximum trace data size.
+Tracing will be stopped automatically when that amount is reached.
+Use "-1" to disable the limitation.
+@item @code{stop_tmo} - Data reception timeout in ms.
+Tracing will be stopped automatically when no data is received within that period.
+@item @code{wait4halt} - if non-zero then wait for target to be halted before tracing start.
+@item @code{skip_size} - amount of tracing data to be skipped before writing it to destination.
+@end itemize
+@end deffn
+
+@deffn {Command} {esp apptrace} (stop)
+Stops tracing started with above command.
+@end deffn
+
+@deffn {Command} {esp apptrace} (status)
+Requests ongoing tracing status.
+@end deffn
+
+@deffn {Command} {esp apptrace} (dump file://<outfile>)
+Dumps tracing data from target buffer. It can be useful to dump the latest data
+buffered on target for post-mortem analysis. For example when target starts tracing automatically
+w/o OpenOCD command and keeps only the latest data window which fit into the buffer.
+@uref{https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/app_trace.html#application-level-tracing-library, application level tracing}.
+Data will be stored to specified destination.
+@end deffn
+
 @anchor{softwaredebugmessagesandtracing}
 @section Software Debug Messages and Tracing
 @cindex Linux-ARM DCC support
@@ -11432,8 +11473,8 @@ way to represent JTAG test patterns in text files.
 In a debug session using JTAG for its transport protocol,
 OpenOCD supports running such test files.
 
-@deffn {Command} {svf} @file{filename} [@option{-tap @var{tapname}}] [@option{[-]quiet}] @
-                     [@option{[-]nil}] [@option{[-]progress}] [@option{[-]ignore_error}] @
+@deffn {Command} {svf} @file{filename} [@option{-tap @var{tapname}}] [@option{-quiet}] @
+                     [@option{-nil}] [@option{-progress}] [@option{-ignore_error}] @
                      [@option{-noreset}] [@option{-addcycles @var{cyclecount}}]
 This issues a JTAG reset (Test-Logic-Reset) and then
 runs the SVF script from @file{filename}.
@@ -11447,11 +11488,11 @@ Command options:
 specified by the SVF file with HIR, TIR, HDR and TDR commands;
 instead, calculate them automatically according to the current JTAG
 chain configuration, targeting @var{tapname};
-@item @option{[-]quiet} do not log every command before execution;
-@item @option{[-]nil} ``dry run'', i.e., do not perform any operations
+@item @option{-quiet} do not log every command before execution;
+@item @option{-nil} ``dry run'', i.e., do not perform any operations
 on the real interface;
-@item @option{[-]progress} enable progress indication;
-@item @option{[-]ignore_error} continue execution despite TDO check
+@item @option{-progress} enable progress indication;
+@item @option{-ignore_error} continue execution despite TDO check
 errors.
 @item @option{-noreset} omit JTAG reset (Test-Logic-Reset) before executing
 content of the SVF file;
